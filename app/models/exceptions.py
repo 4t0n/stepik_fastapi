@@ -12,3 +12,9 @@ class CustomExceptionModelB(BaseModel):
     er_message: str
     er_details: str
     er_log: str
+
+
+class ErrorResponseModel(BaseModel):
+    status_code: int
+    message: str
+    error_detail: str

@@ -25,7 +25,11 @@ from models.models import (
     UserReturn,
 )
 from fastapi.encoders import jsonable_encoder
-from models.exceptions import CustomExceptionModelA, CustomExceptionModelB
+from models.exceptions import (
+    CustomExceptionModelA,
+    CustomExceptionModelB,
+    ErrorResponseModel,
+)
 from fake_data.data import sample_products
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -283,7 +287,14 @@ async def get_protected_resource(
     return {"message": "Access success!"}
 
 
-@app.post("/users/", response_model=UserReturn)
+@app.post(
+    "/users/",
+    response_model=UserReturn,
+    responses={
+        status.HTTP_200_OK: {"model": UserReturn},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ErrorResponseModel},
+    },
+)
 async def create_user(user: UserCreate):
     query = "INSERT INTO users (username, email) VALUES (:username, :email) RETURNING id"
     values = {"username": user.username, "email": user.email}

@@ -46,9 +46,3 @@ class User(BaseModel):
     password: str
     disabled: bool
     roles: list[str]
-
-
-class ErrorResponseModel(BaseModel):
-    status_code: int
-    message: str
-    error_detail: str
