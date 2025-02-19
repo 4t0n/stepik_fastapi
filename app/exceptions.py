@@ -21,12 +21,20 @@ class CustomExceptionB(HTTPException):
 
 
 class UserNotFoundException(HTTPException):
-    def __init__(self, detail: str, message: str, status_code: int = 404):
-        super().__init__(status_code=status_code, detail=detail)
+    def __init__(
+        self, detail: str, message: str, status_code: int = 404
+    ):
+        super().__init__(
+            status_code=status_code, detail=detail
+        )
         self.message = message
 
 
 class InvalidUserDataException(HTTPException):
-    def __init__(self, detail: str, message: str, status_code: int = 422):
-        super().__init__(status_code=status_code, detail=detail)
+    def __init__(
+        self, detail: str, message: str, status_code: int = 422
+    ):
+        super().__init__(
+            status_code=status_code, detail=detail
+        )
         self.message = message

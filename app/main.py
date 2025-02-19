@@ -1,6 +1,8 @@
 import re
+import time
 import jwt
 from jwt.exceptions import InvalidTokenError
+from asyncpg.exceptions import UniqueViolationError
 from fastapi import (
     Depends,
     HTTPException,
@@ -12,6 +14,7 @@ from fastapi import (
     FastAPI,
     Response,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
 from models.models import (
@@ -35,8 +38,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from functools import wraps
 from databases import Database
-from exceptions import CustomExceptionA, CustomExceptionB
-
+from exceptions import (
+    CustomExceptionA,
+    CustomExceptionB,
+    UserNotFoundException,
+    InvalidUserDataException,
+)
+from fastapi_localization import TranslateJsonResponse
+from fastapi_localization import TranslatableStringField
 
 SECRET_KEY = "0eb5ad9cb42cffd87faad1aa050810d2eaf77cc91cee5f2c43b2fbda057738fa"
 ALGORITHM = "HS256"
@@ -56,7 +65,7 @@ def is_valid_accept_language(header: str) -> bool:
     :return: True, если заголовок корректен, иначе False
     """
     pattern = re.compile(
-        r'^(?:[a-zA-Z]{1,8}(?:-[a-zA-Z]{1,8})?(?:;q=0(\.\d{0,3})?|1(\.0{0,3})?)?(?:,\s*)?)+$'
+        r"^(?:[a-zA-Z]{1,8}(?:-[a-zA-Z]{1,8})?(?:;q=0(\.\d{0,3})?|1(\.0{0,3})?)?(?:,\s*)?)+$"
     )
     return bool(pattern.fullmatch(header))
 
@@ -287,12 +296,46 @@ async def get_protected_resource(
     return {"message": "Access success!"}
 
 
+@app.exception_handler(InvalidUserDataException)
+async def invalid_user_exception(request, exc: InvalidUserDataException):
+    start_time = time.perf_counter()
+    error = jsonable_encoder(
+        ErrorResponseModel(
+            status_code=exc.status_code,
+            message=exc.message,
+            error_detail=exc.detail,
+        )
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error,
+        headers={"X-ErrorHandleTime": f"{time.perf_counter() - start_time}"},
+    )
+
+
+@app.exception_handler(UserNotFoundException)
+async def not_found_user_exception(request, exc: UserNotFoundException):
+    start_time = time.perf_counter()
+    error = jsonable_encoder(
+        ErrorResponseModel(
+            status_code=exc.status_code,
+            message=exc.message,
+            error_detail=exc.detail,
+        )
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error,
+        headers={"X-ErrorHandleTime": f"{time.perf_counter() - start_time}"},
+    )
+
+
 @app.post(
     "/users/",
     response_model=UserReturn,
+    # response_class=TranslateJsonResponse,
     responses={
         status.HTTP_200_OK: {"model": UserReturn},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ErrorResponseModel},
     },
 )
 async def create_user(user: UserCreate):
@@ -302,13 +345,17 @@ async def create_user(user: UserCreate):
         try:
             user_id = await db.execute(query=query, values=values)
             return {**user.model_dump(), "id": user_id}
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to create user. Error: {e}"
+        except UniqueViolationError as er:
+            raise InvalidUserDataException(
+                detail="DB failure.", message=str(er).replace("\n", " ")
             )
 
 
-@app.get("/users/{user_id}", response_model=UserReturn)
+@app.get(
+    "/users/{user_id}",
+    response_model=UserReturn,
+    # response_class=TranslateJsonResponse,
+)
 async def get_one_user_(user_id: int):
     query = "SELECT * FROM users WHERE id = :user_id"
     values = {"user_id": user_id}
@@ -325,8 +372,10 @@ async def get_one_user_(user_id: int):
                 email=result["email"],
                 id=result["id"],
             )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+        raise UserNotFoundException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+            message=f"User(id={user_id}) not found.",
         )
 
 
@@ -423,3 +472,8 @@ async def read_item(item_id: int):
             log="loglog",
         )
     return {"id": item_id}
+
+
+@app.get("/sum/")
+def calculate_sum(a: int, b: int):
+    return {"result": a + b}
